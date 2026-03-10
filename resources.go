@@ -10,6 +10,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	"code.cloudfoundry.org/bbs/models"
 	"code.cloudfoundry.org/executor/containermetrics"
@@ -36,6 +37,8 @@ type CellState struct {
 	PlacementTags           []string
 	OptionalPlacementTags   []string
 	ProxyMemoryAllocationMB int
+	CachedDropletHashes     []string  `json:"cached_droplet_hashes,omitempty"`
+	StartTime               time.Time `json:"start_time,omitempty"`
 }
 
 func NewCellState(
@@ -256,15 +259,16 @@ func (p *PlacementConstraint) Valid() bool {
 }
 
 type LRP struct {
-	InstanceGUID string `json:"instance_guid"`
+	InstanceGUID        string `json:"instance_guid"`
 	models.ActualLRPKey
 	PlacementConstraint
 	Resource
-	State string `json:"state"`
+	State                string `json:"state"`
+	DropletCacheKeyHash  string `json:"droplet_cache_key_hash,omitempty"`
 }
 
 func NewLRP(instanceGUID string, key models.ActualLRPKey, res Resource, pc PlacementConstraint) LRP {
-	return LRP{instanceGUID, key, pc, res, ""}
+	return LRP{InstanceGUID: instanceGUID, ActualLRPKey: key, PlacementConstraint: pc, Resource: res, State: ""}
 }
 
 func (lrp *LRP) Identifier() string {
@@ -272,7 +276,10 @@ func (lrp *LRP) Identifier() string {
 }
 
 func (lrp *LRP) Copy() LRP {
-	return NewLRP(lrp.InstanceGUID, lrp.ActualLRPKey, lrp.Resource, lrp.PlacementConstraint)
+	copied := NewLRP(lrp.InstanceGUID, lrp.ActualLRPKey, lrp.Resource, lrp.PlacementConstraint)
+	copied.State = lrp.State
+	copied.DropletCacheKeyHash = lrp.DropletCacheKeyHash
+	return copied
 }
 
 type LRPUpdate struct {

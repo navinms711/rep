@@ -3,8 +3,10 @@ package rep_test
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
+	"time"
 
 	"code.cloudfoundry.org/bbs/models"
 	"code.cloudfoundry.org/rep"
@@ -269,6 +271,82 @@ var _ = Describe("Resources", func() {
 				Expect(list).To(ContainElement("with-version@2.0.0"))
 				Expect(list).To(ContainElement("without-version"))
 			})
+		})
+	})
+
+	Describe("LRP", func() {
+		Describe("Copy", func() {
+			It("preserves State and DropletCacheKeyHash", func() {
+				lrp := buildLRP("ig-1", "pg-1", "domain", 0, "preloaded:linux", 10, 20, 30, []string{}, []string{}, models.ActualLRPStateRunning)
+				lrp.DropletCacheKeyHash = "abc123hash"
+
+				copied := lrp.Copy()
+
+				Expect(copied.State).To(Equal(models.ActualLRPStateRunning))
+				Expect(copied.DropletCacheKeyHash).To(Equal("abc123hash"))
+				Expect(copied.InstanceGUID).To(Equal(lrp.InstanceGUID))
+				Expect(copied.ProcessGuid).To(Equal(lrp.ProcessGuid))
+			})
+
+			It("produces an independent copy", func() {
+				lrp := buildLRP("ig-1", "pg-1", "domain", 0, "preloaded:linux", 10, 20, 30, []string{}, []string{}, models.ActualLRPStateClaimed)
+				lrp.DropletCacheKeyHash = "hash"
+
+				copied := lrp.Copy()
+				copied.State = "other"
+				copied.DropletCacheKeyHash = "otherhash"
+
+				Expect(lrp.State).To(Equal(models.ActualLRPStateClaimed))
+				Expect(lrp.DropletCacheKeyHash).To(Equal("hash"))
+			})
+		})
+
+		Describe("DropletCacheKeyHash", func() {
+			It("is preserved when set on an LRP from NewLRP", func() {
+				lrpKey := models.NewActualLRPKey("pg-1", 0, "domain")
+				lrp := rep.NewLRP("ig-1", lrpKey, rep.NewResource(10, 20, 30), rep.PlacementConstraint{RootFs: "preloaded:linux"})
+				Expect(lrp.DropletCacheKeyHash).To(BeEmpty())
+
+				lrp.DropletCacheKeyHash = "droplet-hash"
+				Expect(lrp.DropletCacheKeyHash).To(Equal("droplet-hash"))
+			})
+		})
+	})
+
+	Describe("CellState CachedDropletHashes and StartTime", func() {
+		It("allows setting CachedDropletHashes and StartTime", func() {
+			state := rep.CellState{
+				CellID:              "cell-1",
+				CachedDropletHashes: []string{"hash1", "hash2"},
+				StartTime:           time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC),
+			}
+			Expect(state.CachedDropletHashes).To(Equal([]string{"hash1", "hash2"}))
+			Expect(state.StartTime).To(Equal(time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC)))
+		})
+
+		It("round-trips CachedDropletHashes and StartTime through JSON", func() {
+			state := rep.CellState{
+				CellID:              "cell-1",
+				CachedDropletHashes: []string{"a", "b"},
+				StartTime:           time.Date(2025, 2, 1, 12, 0, 0, 0, time.UTC),
+			}
+			data, err := json.Marshal(state)
+			Expect(err).NotTo(HaveOccurred())
+
+			var decoded rep.CellState
+			Expect(json.Unmarshal(data, &decoded)).To(Succeed())
+			Expect(decoded.CachedDropletHashes).To(Equal([]string{"a", "b"}))
+			Expect(decoded.StartTime.UTC()).To(Equal(state.StartTime.UTC()))
+		})
+
+		It("NewCellState leaves CachedDropletHashes and StartTime as zero values", func() {
+			state := rep.NewCellState(
+				"cell-id", 0, "https://rep.example.com",
+				rep.RootFSProviders{}, rep.Resources{}, rep.Resources{},
+				nil, nil, "zone", 0, false, nil, nil, nil, 0,
+			)
+			Expect(state.CachedDropletHashes).To(BeNil())
+			Expect(state.StartTime.IsZero()).To(BeTrue())
 		})
 	})
 })
