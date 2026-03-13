@@ -73,6 +73,9 @@ func main() {
 		repConfig.Zone = *zoneOverride
 	}
 
+	// Prefer /mnt/rep_cache if it is a mount point (pre-warmed disk); otherwise use configured default
+	repConfig.CachePath = config.ResolveCachePath(repConfig.CachePath)
+
 	clock := clock.NewClock()
 	logger, reconfigurableSink := lagerflags.NewFromConfig(repConfig.SessionName, repConfig.LagerConfig)
 
