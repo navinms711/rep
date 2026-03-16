@@ -78,6 +78,8 @@ func main() {
 
 	clock := clock.NewClock()
 	logger, reconfigurableSink := lagerflags.NewFromConfig(repConfig.SessionName, repConfig.LagerConfig)
+	logger.Debug("rep-config-download-cache", lager.Data{"cache_path": repConfig.CachePath})
+	logger.Info("rep-config-download-cache", lager.Data{"cache_path": repConfig.CachePath})
 
 	if !repConfig.ExecutorConfig.Validate(logger) {
 		logger.Fatal("", errors.New("failed-to-configure-executor"))
