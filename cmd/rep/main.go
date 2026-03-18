@@ -73,7 +73,7 @@ func main() {
 		repConfig.Zone = *zoneOverride
 	}
 
-	// Prefer /mnt/rep_cache if it is a mount point (pre-warmed disk); otherwise use configured default
+	// Prefer /var/vcap/store/rep_download_cache when it is a mount point (pre-warmed disk); else use ephemeral download_cache (Linux).
 	repConfig.CachePath = config.ResolveCachePath(repConfig.CachePath)
 
 	clock := clock.NewClock()

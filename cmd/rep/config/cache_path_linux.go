@@ -9,16 +9,18 @@ import (
 )
 
 const (
-	// PreferredCachePath is the mount point used for pre-warmed rep cache (e.g. persistent disk mounted by pre-start).
-	// If this path exists, is a directory, and is a mount point, rep uses it; otherwise rep uses the configured default.
-	PreferredCachePath = "/mnt/rep_cache"
+	// PreferredCachePath is the mount point for pre-warmed rep cache (hot-attached disk mounted by pre-start).
+	// If this path exists, is a directory, and is a mount point, rep uses it; otherwise rep uses DefaultEphemeralCachePath.
+	PreferredCachePath = "/var/vcap/store/rep_download_cache"
+	// DefaultEphemeralCachePath is used when PreferredCachePath is not a mount point (no pre-warmed disk).
+	DefaultEphemeralCachePath = "/var/vcap/data/rep/shared/garden/download_cache"
 )
 
-// ResolveCachePath returns the cache path to use: PreferredCachePath if it exists, is a directory, and is a
-// mount point (i.e. the pre-warmed disk is mounted); otherwise returns fallback (the configured default).
+// ResolveCachePath returns PreferredCachePath if it is a mount point; otherwise DefaultEphemeralCachePath.
+// The fallback argument is ignored on Linux so rep always uses ephemeral when the store path is not mounted.
 func ResolveCachePath(fallback string) string {
 	if !isMountPoint(PreferredCachePath) {
-		return fallback
+		return DefaultEphemeralCachePath
 	}
 	return PreferredCachePath
 }

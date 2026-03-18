@@ -7,17 +7,17 @@ import (
 )
 
 var _ = Describe("ResolveCachePath", func() {
-	It("returns fallback when preferred path is not a mount point", func() {
-		// On non-Linux, ResolveCachePath always returns fallback.
-		// On Linux, /mnt/rep_cache may not exist or not be a mount point in test env.
-		fallback := "/var/vcap/store/rep_download_cache"
+	It("returns preferred or default ephemeral path", func() {
+		// On Linux: PreferredCachePath if mount point, else DefaultEphemeralCachePath.
+		// On non-Linux: returns fallback argument.
+		fallback := "/var/vcap/data/rep/shared/garden/download_cache"
 		result := config.ResolveCachePath(fallback)
-		// Either preferred (if we're on Linux and it's a mount point) or fallback
-		Expect([]string{config.PreferredCachePath, fallback}).To(ContainElement(result))
+		Expect([]string{config.PreferredCachePath, config.DefaultEphemeralCachePath, fallback}).To(ContainElement(result))
 	})
 
-	It("returns fallback for empty fallback", func() {
+	It("on non-Linux returns empty fallback when given", func() {
 		result := config.ResolveCachePath("")
-		Expect([]string{config.PreferredCachePath, ""}).To(ContainElement(result))
+		// On Linux we get DefaultEphemeralCachePath; on non-Linux we get "".
+		Expect([]string{config.PreferredCachePath, config.DefaultEphemeralCachePath, ""}).To(ContainElement(result))
 	})
 })
