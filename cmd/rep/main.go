@@ -73,8 +73,13 @@ func main() {
 		repConfig.Zone = *zoneOverride
 	}
 
+	// Prefer /var/vcap/store/rep_download_cache when it is a mount point (pre-warmed disk); else use ephemeral download_cache (Linux).
+	repConfig.CachePath = config.ResolveCachePath(repConfig.CachePath)
+
 	clock := clock.NewClock()
 	logger, reconfigurableSink := lagerflags.NewFromConfig(repConfig.SessionName, repConfig.LagerConfig)
+	logger.Debug("rep-config-download-cache", lager.Data{"cache_path": repConfig.CachePath})
+	logger.Info("rep-config-download-cache", lager.Data{"cache_path": repConfig.CachePath})
 
 	if !repConfig.ExecutorConfig.Validate(logger) {
 		logger.Fatal("", errors.New("failed-to-configure-executor"))
