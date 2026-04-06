@@ -45,9 +45,10 @@ func New(
 	executorClient executor.Client,
 	metronClient loggingclient.IngressClient,
 	evacuationReporter evacuation_context.EvacuationReporter,
+	bbsErrorCounter *evacuation_context.BBSErrorCounter,
 ) Generator {
 	containerDelegate := internal.NewContainerDelegate(executorClient)
-	lrpProcessor := internal.NewLRPProcessor(bbs, containerDelegate, metronClient, cellID, availabilityZone, stackPathMap, layeringMode, evacuationReporter)
+	lrpProcessor := internal.NewLRPProcessor(bbs, containerDelegate, metronClient, cellID, availabilityZone, stackPathMap, layeringMode, evacuationReporter, bbsErrorCounter)
 	taskProcessor := internal.NewTaskProcessor(bbs, containerDelegate, cellID, stackPathMap, layeringMode)
 
 	return &generator{

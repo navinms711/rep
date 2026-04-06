@@ -1,11 +1,15 @@
 package auctioncellrep
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"sort"
+	"strings"
+	"time"
 
 	"code.cloudfoundry.org/bbs/models"
 	"code.cloudfoundry.org/executor"
@@ -41,6 +45,7 @@ type AuctionCellRep struct {
 	enableContainerProxy     bool
 	proxyMemoryAllocation    int
 	allocator                BatchContainerAllocator
+	cachePath                string
 }
 
 func New(
@@ -58,6 +63,7 @@ func New(
 	proxyMemoryAllocation int,
 	enableContainerProxy bool,
 	allocator BatchContainerAllocator,
+	cachePath string,
 ) *AuctionCellRep {
 	return &AuctionCellRep{
 		cellID:                   cellID,
@@ -74,6 +80,7 @@ func New(
 		enableContainerProxy:     enableContainerProxy,
 		proxyMemoryAllocation:    proxyMemoryAllocation,
 		allocator:                allocator,
+		cachePath:                cachePath,
 	}
 }
 
@@ -237,17 +244,21 @@ func (a *AuctionCellRep) State(logger lager.Logger) (rep.CellState, bool, error)
 		allocatedProxyMemory,
 	)
 
+	state.CachedDropletHashes = scanCachedDropletHashes(logger, a.cachePath)
+	state.StartTime = time.Now()
+
 	healthy := a.client.Healthy(logger)
 	if !healthy {
 		logger.Error("failed-garden-health-check", nil)
 	}
 
 	logger.Info("provided", lager.Data{
-		"available-resources": state.AvailableResources,
-		"total-resources":     state.TotalResources,
-		"num-lrps":            len(state.LRPs),
-		"zone":                state.Zone,
-		"evacuating":          state.Evacuating,
+		"available-resources":    state.AvailableResources,
+		"total-resources":        state.TotalResources,
+		"num-lrps":               len(state.LRPs),
+		"zone":                   state.Zone,
+		"evacuating":             state.Evacuating,
+		"cached-droplet-hashes":  len(state.CachedDropletHashes),
 	})
 
 	return state, healthy, nil
@@ -373,6 +384,39 @@ func (a *AuctionCellRep) Perform(logger lager.Logger, traceID string, work rep.W
 	failedWork.Tasks = a.allocator.BatchTaskAllocationRequest(logger, traceID, work.Tasks)
 
 	return failedWork, nil
+}
+
+// scanCachedDropletHashes reads the download cache directory and extracts the
+// unique MD5 hashes from cached droplet filenames. Cache filenames are
+// formatted as {md5}-{timestamp}-{seq} by cacheddownloader.
+func scanCachedDropletHashes(logger lager.Logger, cachePath string) []string {
+	if cachePath == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(cachePath)
+	if err != nil {
+		logger.Debug("scan-cached-droplet-hashes-failed", lager.Data{"path": cachePath, "error": err.Error()})
+		return nil
+	}
+	seen := make(map[string]struct{}, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		dash := strings.IndexByte(name, '-')
+		if dash != md5.Size*2 {
+			continue
+		}
+		hash := name[:dash]
+		seen[hash] = struct{}{}
+	}
+	hashes := make([]string, 0, len(seen))
+	for h := range seen {
+		hashes = append(hashes, h)
+	}
+	sort.Strings(hashes)
+	return hashes
 }
 
 func (a *AuctionCellRep) convertResources(resources executor.ExecutorResources) rep.Resources {

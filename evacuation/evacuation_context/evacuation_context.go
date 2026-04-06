@@ -1,6 +1,9 @@
 package evacuation_context
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 //go:generate counterfeiter -o fake_evacuation_context/fake_evacuatable.go . Evacuatable
 type Evacuatable interface {
@@ -15,6 +18,22 @@ type EvacuationReporter interface {
 //go:generate counterfeiter -o fake_evacuation_context/fake_evacuation_notifier.go . EvacuationNotifier
 type EvacuationNotifier interface {
 	EvacuateNotify() <-chan struct{}
+}
+
+type BBSErrorCounter struct {
+	count atomic.Int64
+}
+
+func NewBBSErrorCounter() *BBSErrorCounter {
+	return &BBSErrorCounter{}
+}
+
+func (c *BBSErrorCounter) Increment() {
+	c.count.Add(1)
+}
+
+func (c *BBSErrorCounter) SwapAndReset() int64 {
+	return c.count.Swap(0)
 }
 
 type evacuationContext struct {

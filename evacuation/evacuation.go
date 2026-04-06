@@ -18,6 +18,7 @@ type Evacuator struct {
 	cellID             string
 	evacuationTimeout  time.Duration
 	pollingInterval    time.Duration
+	bbsErrorCounter    *evacuation_context.BBSErrorCounter
 }
 
 func NewEvacuator(
@@ -28,6 +29,7 @@ func NewEvacuator(
 	cellID string,
 	evacuationTimeout time.Duration,
 	pollingInterval time.Duration,
+	bbsErrorCounter *evacuation_context.BBSErrorCounter,
 ) *Evacuator {
 	return &Evacuator{
 		logger:             logger,
@@ -37,6 +39,7 @@ func NewEvacuator(
 		cellID:             cellID,
 		evacuationTimeout:  evacuationTimeout,
 		pollingInterval:    pollingInterval,
+		bbsErrorCounter:    bbsErrorCounter,
 	}
 }
 
@@ -80,23 +83,50 @@ func (e *Evacuator) evacuate(logger lager.Logger, doneCh chan<- struct{}) {
 	logger = logger.Session("evacuating")
 	logger.Info("started")
 
-	timer := e.clock.NewTimer(e.pollingInterval)
+	baseInterval := e.pollingInterval / 2
+	if baseInterval < time.Second {
+		baseInterval = time.Second
+	}
+	maxInterval := e.pollingInterval
+	currentInterval := baseInterval
+
+	logger.Info("adaptive-polling-initialized", lager.Data{
+		"base-interval": baseInterval.String(),
+		"max-interval":  maxInterval.String(),
+	})
+
+	timer := e.clock.NewTimer(currentInterval)
 	defer timer.Stop()
 
 	for {
 		evacuated := e.allContainersEvacuated(logger)
 
-		if !evacuated {
-			logger.Info("evacuation-incomplete", lager.Data{"polling-interval": e.pollingInterval})
-			timer.Reset(e.pollingInterval)
-			<-timer.C()
-			continue
+		if evacuated {
+			close(doneCh)
+			logger.Info("succeeded")
+			return
 		}
 
-		close(doneCh)
-		logger.Info("succeeded")
+		bbsErrors := e.bbsErrorCounter.SwapAndReset()
+		if bbsErrors > 0 {
+			currentInterval += time.Second
+			if currentInterval > maxInterval {
+				currentInterval = maxInterval
+			}
+			logger.Info("adaptive-polling-backoff", lager.Data{
+				"bbs-errors":       bbsErrors,
+				"current-interval": currentInterval.String(),
+			})
+		} else if currentInterval > baseInterval {
+			currentInterval = baseInterval
+			logger.Info("adaptive-polling-recovered", lager.Data{
+				"current-interval": currentInterval.String(),
+			})
+		}
 
-		return
+		logger.Info("evacuation-incomplete", lager.Data{"polling-interval": currentInterval})
+		timer.Reset(currentInterval)
+		<-timer.C()
 	}
 }
 
