@@ -138,14 +138,24 @@ func main() {
 	preloadedRootFSesWithVersions := rep.StackPathMap(preloadedRootFSes).StackVersionList()
 	extraRootFSesWithVersions := extraRootFSes.StackVersionList()
 
+	// Silk-daemon needs ~60s to fully initialize for CNI operations. GetRootFSSizes
+	// (inside Initialize) creates a Garden container that triggers the silk CNI
+	// plugin's 'up' action; if silk-daemon is not yet ready this fails and would
+	// crash rep, causing a ~53s Monit restart cycle. Retry until silk is ready.
 	executorClient, containerMetricsProvider, executorMembers, err := executorinit.Initialize(logger, repConfig.ExecutorConfig, repConfig.CellID, repConfig.Zone, rootFSMap, sidecarRootFSPath, metronClient, clock)
-	if err != nil {
-		logger.Error("failed-to-initialize-executor", err)
-		os.Exit(1)
+	for attempt := 1; err != nil; attempt++ {
+		if attempt > 60 {
+			logger.Error("failed-to-initialize-executor", err)
+			os.Exit(1)
+		}
+		logger.Error("failed-to-initialize-executor-retrying", err, lager.Data{"attempt": attempt})
+		time.Sleep(2 * time.Second)
+		executorClient, containerMetricsProvider, executorMembers, err = executorinit.Initialize(logger, repConfig.ExecutorConfig, repConfig.CellID, repConfig.Zone, rootFSMap, sidecarRootFSPath, metronClient, clock)
 	}
 	defer executorClient.Cleanup(logger)
 
 	evacuatable, evacuationReporter, evacuationNotifier := evacuation_context.New()
+	bbsErrorCounter := evacuation_context.NewBBSErrorCounter()
 
 	// only one outstanding operation per container is necessary
 	queue := operationq.NewSlidingQueue(1)
@@ -158,6 +168,7 @@ func main() {
 		repConfig.CellID,
 		time.Duration(repConfig.EvacuationTimeout),
 		time.Duration(repConfig.EvacuationPollingInterval),
+		bbsErrorCounter,
 	)
 
 	bbsClient := initializeBBSClient(logger, repConfig)
@@ -180,6 +191,7 @@ func main() {
 		repConfig.ProxyMemoryAllocationMB,
 		repConfig.EnableContainerProxy,
 		batchContainerAllocator,
+		repConfig.CachePath,
 	)
 
 	requestTypes := []string{
@@ -198,6 +210,7 @@ func main() {
 		executorClient,
 		metronClient,
 		evacuationReporter,
+		bbsErrorCounter,
 	)
 
 	cleanup := evacuation.NewEvacuationCleanup(

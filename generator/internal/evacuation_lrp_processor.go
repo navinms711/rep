@@ -10,6 +10,7 @@ import (
 	"code.cloudfoundry.org/executor"
 	"code.cloudfoundry.org/lager/v3"
 	"code.cloudfoundry.org/rep"
+	"code.cloudfoundry.org/rep/evacuation/evacuation_context"
 )
 
 type evacuationLRPProcessor struct {
@@ -19,15 +20,17 @@ type evacuationLRPProcessor struct {
 	cellID              string
 	availabilityZone    string
 	evacuatedContainers sync.Map
+	bbsErrorCounter     *evacuation_context.BBSErrorCounter
 }
 
-func newEvacuationLRPProcessor(bbsClient bbs.InternalClient, containerDelegate ContainerDelegate, metronClient loggingclient.IngressClient, cellID string, availabilityZone string) LRPProcessor {
+func newEvacuationLRPProcessor(bbsClient bbs.InternalClient, containerDelegate ContainerDelegate, metronClient loggingclient.IngressClient, cellID string, availabilityZone string, bbsErrorCounter *evacuation_context.BBSErrorCounter) LRPProcessor {
 	return &evacuationLRPProcessor{
-		bbsClient:         bbsClient,
+		bbsClient:       bbsClient,
 		containerDelegate: containerDelegate,
 		metronClient:      metronClient,
 		cellID:            cellID,
 		availabilityZone:  availabilityZone,
+		bbsErrorCounter:   bbsErrorCounter,
 	}
 }
 
@@ -112,6 +115,7 @@ func (p *evacuationLRPProcessor) processRunningContainer(logger lager.Logger, tr
 		p.containerDelegate.DeleteContainer(logger, traceID, lrpContainer.Container.Guid)
 	} else if err != nil {
 		logger.Error("failed-to-evacuate-running-actual-lrp", err, lager.Data{"lrp-key": lrpContainer.ActualLRPKey})
+		p.bbsErrorCounter.Increment()
 	}
 }
 

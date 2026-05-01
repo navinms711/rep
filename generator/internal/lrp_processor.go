@@ -45,9 +45,10 @@ func NewLRPProcessor(
 	stackPathMap rep.StackPathMap,
 	layeringMode string,
 	evacuationReporter evacuation_context.EvacuationReporter,
+	bbsErrorCounter *evacuation_context.BBSErrorCounter,
 ) LRPProcessor {
 	ordinaryProcessor := newOrdinaryLRPProcessor(bbsClient, containerDelegate, cellID, availabilityZone, stackPathMap, layeringMode)
-	evacuationProcessor := newEvacuationLRPProcessor(bbsClient, containerDelegate, metronClient, cellID, availabilityZone)
+	evacuationProcessor := newEvacuationLRPProcessor(bbsClient, containerDelegate, metronClient, cellID, availabilityZone, bbsErrorCounter)
 	return &lrpProcessor{
 		evacuationReporter:  evacuationReporter,
 		ordinaryProcessor:   ordinaryProcessor,
