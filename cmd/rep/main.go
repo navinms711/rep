@@ -133,10 +133,19 @@ func main() {
 	preloadedRootFSesWithVersions := rep.StackPathMap(preloadedRootFSes).StackVersionList()
 	extraRootFSesWithVersions := extraRootFSes.StackVersionList()
 
+	// Silk-daemon needs ~60s to fully initialize for CNI operations. GetRootFSSizes
+	// (inside Initialize) creates a Garden container that triggers the silk CNI
+	// plugin's 'up' action; if silk-daemon is not yet ready this fails and would
+	// crash rep, causing a ~53s Monit restart cycle. Retry until silk is ready.
 	executorClient, containerMetricsProvider, executorMembers, err := executorinit.Initialize(logger, repConfig.ExecutorConfig, repConfig.CellID, repConfig.Zone, rootFSMap, sidecarRootFSPath, metronClient, clock)
-	if err != nil {
-		logger.Error("failed-to-initialize-executor", err)
-		os.Exit(1)
+	for attempt := 1; err != nil; attempt++ {
+		if attempt > 60 {
+			logger.Error("failed-to-initialize-executor", err)
+			os.Exit(1)
+		}
+		logger.Error("failed-to-initialize-executor-retrying", err, lager.Data{"attempt": attempt})
+		time.Sleep(2 * time.Second)
+		executorClient, containerMetricsProvider, executorMembers, err = executorinit.Initialize(logger, repConfig.ExecutorConfig, repConfig.CellID, repConfig.Zone, rootFSMap, sidecarRootFSPath, metronClient, clock)
 	}
 	defer executorClient.Cleanup(logger)
 
