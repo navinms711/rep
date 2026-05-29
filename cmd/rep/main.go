@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"code.cloudfoundry.org/bbs"
@@ -139,8 +140,12 @@ func main() {
 	// crash rep, causing a ~53s Monit restart cycle. Retry until silk is ready.
 	executorClient, containerMetricsProvider, executorMembers, err := executorinit.Initialize(logger, repConfig.ExecutorConfig, repConfig.CellID, repConfig.Zone, rootFSMap, sidecarRootFSPath, metronClient, clock)
 	for attempt := 1; err != nil; attempt++ {
+		if !isTransientSilkError(err) {
+			logger.Error("failed-to-initialize-executor-genuine-error", err)
+			os.Exit(1)
+		}
 		if attempt > 60 {
-			logger.Error("failed-to-initialize-executor", err)
+			logger.Error("failed-to-initialize-executor-timeout", err)
 			os.Exit(1)
 		}
 		logger.Error("failed-to-initialize-executor-retrying", err, lager.Data{"attempt": attempt})
@@ -455,4 +460,10 @@ func verifyCertificate(serverCertFile string) error {
 	}
 
 	return errors.New("invalid SAN metadata. certificate needs to contain 127.0.0.1 for IP SAN metadata.")
+}
+
+func isTransientSilkError(err error) bool {
+	return errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ENOENT) ||
+		errors.Is(err, syscall.ECONNRESET)
 }
