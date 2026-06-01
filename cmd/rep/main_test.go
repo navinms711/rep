@@ -249,9 +249,11 @@ var _ = Describe("The Rep", func() {
 				testIngressServer.Stop()
 			})
 
-			It("logs an error and exit with non-zero status code", func() {
-				Eventually(runner.Session).Should(Exit(1))
-				Expect(runner.Session).To(gbytes.Say("failed-to-initialize-metron-client"))
+			// diego-logging-client now dials loggregator non-blocking (lazy). rep
+			// starts successfully and retries the connection in the background, so
+			// it must NOT exit when metron is temporarily unavailable.
+			It("starts successfully and does not exit", func() {
+				Consistently(runner.Session).ShouldNot(Exit())
 			})
 		})
 
